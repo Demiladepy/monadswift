@@ -1,7 +1,7 @@
 import { usePrivy } from "@privy-io/react-auth";
 import { createPublicClient, formatEther, formatUnits, http } from "viem";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { MONAD_MAINNET_USDC, monadMainnet } from "~/lib/monad-chain";
+import { MONAD_APP_USDC, monadAppChain } from "~/lib/monad-chain";
 import { getUserEvmAddress } from "~/lib/user-wallet";
 
 const erc20BalanceAbi = [
@@ -21,14 +21,16 @@ export function useMonadBalances() {
   const publicClient = useMemo(
     () =>
       createPublicClient({
-        chain: monadMainnet,
-        transport: http(monadMainnet.rpcUrls.default.http[0]),
+        chain: monadAppChain,
+        transport: http(monadAppChain.rpcUrls.default.http[0]),
       }),
     [],
   );
 
   const [balanceMon, setBalanceMon] = useState<string | null>(null);
   const [balanceUsdc, setBalanceUsdc] = useState<string | null>(null);
+  /** Only set when the USDC `balanceOf` call fails (native MON may still load). */
+  const [usdcError, setUsdcError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -36,26 +38,34 @@ export function useMonadBalances() {
     if (!walletAddress) {
       setBalanceMon(null);
       setBalanceUsdc(null);
+      setUsdcError(null);
       return;
     }
     setRefreshing(true);
     setError(null);
+    setUsdcError(null);
     try {
-      const [wei, usdcRaw] = await Promise.all([
-        publicClient.getBalance({ address: walletAddress }),
-        publicClient.readContract({
-          address: MONAD_MAINNET_USDC,
+      try {
+        const wei = await publicClient.getBalance({ address: walletAddress });
+        setBalanceMon(formatEther(wei));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not load MON balance");
+        setBalanceMon(null);
+      }
+
+      try {
+        const usdcRaw = await publicClient.readContract({
+          address: MONAD_APP_USDC,
           abi: erc20BalanceAbi,
           functionName: "balanceOf",
           args: [walletAddress],
-        }),
-      ]);
-      setBalanceMon(formatEther(wei));
-      setBalanceUsdc(formatUnits(usdcRaw, 6));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load balances");
-      setBalanceMon(null);
-      setBalanceUsdc(null);
+        });
+        setBalanceUsdc(formatUnits(usdcRaw, 6));
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Could not load USDC balance";
+        setUsdcError(msg);
+        setBalanceUsdc(null);
+      }
     } finally {
       setRefreshing(false);
     }
@@ -73,6 +83,7 @@ export function useMonadBalances() {
     balanceMon,
     balanceUsdc,
     error,
+    usdcError,
     refreshing,
     refresh,
   };

@@ -1,3 +1,5 @@
+import "~/lib/buffer-polyfill";
+
 import {
   isRouteErrorResponse,
   Links,

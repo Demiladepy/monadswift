@@ -9,9 +9,12 @@
     "typecheck": "react-router typegen && tsc"
   },
   "dependencies": {
+    "@kuru-labs/kuru-sdk": "^0.0.95",
     "@privy-io/react-auth": "^3.21.2",
     "@react-router/node": "7.14.0",
     "@react-router/serve": "7.14.0",
+    "buffer": "^6.0.3",
+    "ethers": "5.7.1",
     "isbot": "^5.1.36",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

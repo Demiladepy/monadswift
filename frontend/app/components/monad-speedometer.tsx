@@ -13,8 +13,6 @@ export type MonadSpeedometerHandle = {
 };
 
 type Props = {
-  /** When true, always land on exactly 0.80s (hackathon pitch). */
-  demoMode?: boolean;
   className?: string;
 };
 
@@ -22,7 +20,7 @@ type Props = {
  * Visual “proof” of fast finality: needle / readout settles near ~0.8s.
  */
 export const MonadSpeedometer = forwardRef<MonadSpeedometerHandle, Props>(
-  function MonadSpeedometer({ demoMode = false, className = "" }, ref) {
+  function MonadSpeedometer({ className = "" }, ref) {
     const [phase, setPhase] = useState<"idle" | "running" | "done">("idle");
     const [displaySec, setDisplaySec] = useState(0);
     const rafRef = useRef<number | null>(null);
@@ -37,9 +35,7 @@ export const MonadSpeedometer = forwardRef<MonadSpeedometerHandle, Props>(
     const trigger = useCallback(
       (finalitySeconds?: number) => {
         clearRaf();
-        const target =
-          finalitySeconds ??
-          (demoMode ? 0.8 : 0.78 + Math.random() * 0.08);
+        const target = finalitySeconds ?? 0.78 + Math.random() * 0.08;
         setDisplaySec(0);
         setPhase("running");
         const start = performance.now();
@@ -60,7 +56,7 @@ export const MonadSpeedometer = forwardRef<MonadSpeedometerHandle, Props>(
         }
         rafRef.current = requestAnimationFrame(tick);
       },
-      [demoMode],
+      [],
     );
 
     useImperativeHandle(ref, () => ({ trigger }), [trigger]);

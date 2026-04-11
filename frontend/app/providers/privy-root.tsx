@@ -5,7 +5,7 @@ import { AuthModal } from "~/components/auth-modal";
 import { AuthModalMissingEnv } from "~/components/auth-modal-missing-env";
 import { AuthModalProvider } from "~/contexts/auth-modal";
 import { getPrivyAppId } from "~/lib/privy-app-id";
-import { monadMainnet } from "~/lib/monad-chain";
+import { monadAppChain } from "~/lib/monad-chain";
 
 const privyConfig: PrivyClientConfig = {
   loginMethods: ["email", "google", "twitter"],
@@ -15,8 +15,8 @@ const privyConfig: PrivyClientConfig = {
     landingHeader: "MonadSwift",
     loginMessage: "Nano-Bank on Monad — embedded wallet in seconds.",
   },
-  supportedChains: [monadMainnet],
-  defaultChain: monadMainnet,
+  supportedChains: [monadAppChain],
+  defaultChain: monadAppChain,
   embeddedWallets: {
     ethereum: {
       createOnLogin: "users-without-wallets",

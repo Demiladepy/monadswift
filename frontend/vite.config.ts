@@ -1,6 +1,23 @@
 import { reactRouter } from "@react-router/dev/vite";
 import tailwindcss from "@tailwindcss/vite";
+import type { Plugin } from "vite";
 import { defineConfig, loadEnv } from "vite";
+
+/** SSR uses Node's `node:buffer` (external). Client bundles npm `buffer` as ESM (no `require` in browser). */
+function nodeBufferDualResolve(): Plugin {
+  return {
+    name: "node-buffer-dual-resolve",
+    enforce: "pre",
+    async resolveId(id, importer, opts) {
+      if (id !== "node:buffer") return;
+      if (opts?.ssr) {
+        return { id: "node:buffer", external: true };
+      }
+      const resolved = await this.resolve("buffer", importer, { skipSelf: true });
+      return resolved ?? undefined;
+    },
+  };
+}
 
 /** First non-empty value among keys (Vite `PUBLIC_*` / `NEXT_PUBLIC_*` aliases). */
 function envFirst(e: Record<string, string>, keys: string[]): string {
@@ -68,9 +85,24 @@ export default defineConfig(({ mode }) => {
     ]) || "50";
 
   return {
-    plugins: [tailwindcss(), reactRouter()],
+    plugins: [nodeBufferDualResolve(), tailwindcss(), reactRouter()],
+    /** Dev-only: browser `fetch` to `/kuru-api/*` avoids CORS on exchange.kuru.io (see `kuru-public.ts`). */
+    server: {
+      proxy: {
+        "/kuru-api": {
+          target: "https://exchange.kuru.io",
+          changeOrigin: true,
+          secure: true,
+          /** Otherwise upstream receives `/kuru-api/api/v3/...` → 404. Must hit `/api/v3/...`. */
+          rewrite: (path) => path.replace(/^\/kuru-api/, ""),
+        },
+      },
+    },
     resolve: {
       tsconfigPaths: true,
+    },
+    optimizeDeps: {
+      include: ["buffer"],
     },
     define: {
       "import.meta.env.VITE_PRIVY_APP_ID": JSON.stringify(privyAppId),

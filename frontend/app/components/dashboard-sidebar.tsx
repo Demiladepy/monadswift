@@ -1,12 +1,13 @@
 import { MonadLogo } from "~/components/monad-logo";
 
-export type DashboardNavId = "overview" | "swap" | "yield" | "send";
+export type DashboardNavId = "overview" | "swap" | "yield" | "send" | "settings";
 
 const items: { id: DashboardNavId; label: string; badge?: string }[] = [
   { id: "overview", label: "Dashboard" },
   { id: "swap", label: "Swap" },
   { id: "yield", label: "Swift-Yield" },
   { id: "send", label: "Send" },
+  { id: "settings", label: "Profile" },
 ];
 
 type Props = {

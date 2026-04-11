@@ -1,30 +1,25 @@
-import { useCreateWallet, useFundWalletWithBankDeposit, usePrivy } from "@privy-io/react-auth";
+import { useCreateWallet, usePrivy } from "@privy-io/react-auth";
 import type { Route } from "./+types/dashboard";
 import { useRef, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router";
-import { DemoFundModal } from "~/components/demo-fund-modal";
+import { DashboardActionModal } from "~/components/dashboard-action-modal";
 import type { DashboardNavId } from "~/components/dashboard-sidebar";
 import { DashboardSidebar } from "~/components/dashboard-sidebar";
+import { DepositFundingBody, type DepositAsset } from "~/components/deposit-funding-body";
 import { DashboardKuruPanel } from "~/components/dashboard-kuru-panel";
 import { DashboardSocialSend } from "~/components/dashboard-social-send";
-import { DashboardTransactions } from "~/components/dashboard-transactions";
+import { DashboardKuruActivity } from "~/components/dashboard-kuru-activity";
+import { DashboardProfileSettings } from "~/components/dashboard-profile-settings";
 import { DashboardYieldPanel } from "~/components/dashboard-yield-panel";
 import { MonadSpeedometer, type MonadSpeedometerHandle } from "~/components/monad-speedometer";
-import { OnrampModal } from "~/components/onramp-modal";
 import { MonadLogo } from "~/components/monad-logo";
-import { useDemoMode } from "~/hooks/use-demo-mode";
-import { buildMoonpayBuyUrl } from "~/lib/moonpay-buy-url";
-import { getMoonpayApiKey } from "~/lib/moonpay-config";
 import { useMonadBalances } from "~/hooks/use-monad-balances";
+import { useMonadTxHistory } from "~/hooks/use-monad-tx-history";
+import { DashboardTxHistory } from "~/components/dashboard-tx-history";
+import { useRegisterResolverIdentity } from "~/hooks/use-register-resolver";
 import { getPrivyAppId } from "~/lib/privy-app-id";
-import {
-  MONAD_MAINNET_CHAIN_ID,
-  MONAD_MAINNET_DOCS,
-  MONAD_MAINNET_USDC,
-  monadMainnet,
-} from "~/lib/monad-chain";
-
-type DepositAsset = "MON" | "USDC";
+import { getUserDisplayEmail } from "~/lib/privy-user-display";
+import { monadAppChain, monadAppNetwork } from "~/lib/monad-chain";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -45,6 +40,7 @@ function MobileBottomNav({
     { id: "swap", label: "Swap" },
     { id: "yield", label: "Yield" },
     { id: "send", label: "Send" },
+    { id: "settings", label: "Profile" },
   ];
   return (
     <nav
@@ -76,11 +72,11 @@ function MobileBottomNav({
 }
 
 function DashboardWithPrivy() {
-  const { ready, authenticated, logout } = usePrivy();
+  const { ready, authenticated, logout, user } = usePrivy();
   const navigate = useNavigate();
-  const { demoMode, setDemoMode } = useDemoMode();
   const speedRef = useRef<MonadSpeedometerHandle>(null);
   const [nav, setNav] = useState<DashboardNavId>("overview");
+  const [quickAction, setQuickAction] = useState<"deposit" | "send" | "swap" | null>(null);
 
   const {
     walletAddress,
@@ -91,77 +87,21 @@ function DashboardWithPrivy() {
     refresh,
   } = useMonadBalances();
 
+  const txHistory = useMonadTxHistory(walletAddress);
+
+  function refreshBalancesAndActivity() {
+    void refresh();
+    void txHistory.refresh();
+  }
+
+  useRegisterResolverIdentity();
+
   const [depositAsset, setDepositAsset] = useState<DepositAsset>("MON");
   const { createWallet } = useCreateWallet({
     onSuccess: () => void refresh(),
   });
 
-  const [onrampUrl, setOnrampUrl] = useState<string | null>(null);
-  const [demoFundOpen, setDemoFundOpen] = useState(false);
-  const [bankBusy, setBankBusy] = useState(false);
-  const [depositError, setDepositError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-
-  const { fund: fundWithBank } = useFundWalletWithBankDeposit();
-
-  function handleMoonPayFund() {
-    if (!walletAddress) return;
-    if (demoMode) {
-      setDepositError(null);
-      setDemoFundOpen(true);
-      return;
-    }
-    const apiKey = getMoonpayApiKey();
-    if (!apiKey.trim()) {
-      setDepositError(
-        "Add your MoonPay publishable key to .env as VITE_MOONPAY_API_KEY (or PUBLIC_MOONPAY_API_KEY) and restart the dev server.",
-      );
-      return;
-    }
-    setDepositError(null);
-    const url = buildMoonpayBuyUrl({
-      walletAddress: walletAddress as `0x${string}`,
-      apiKey: apiKey.trim(),
-      asset: depositAsset,
-    });
-    setOnrampUrl(url);
-  }
-
-  function bridgeProvider(): "bridge" | "bridge-sandbox" {
-    const v = import.meta.env.VITE_BRIDGE_PROVIDER;
-    if (v === "sandbox" || v === "bridge-sandbox") return "bridge-sandbox";
-    return "bridge";
-  }
-
-  async function handleBridgeBankDeposit() {
-    if (!walletAddress || bankBusy) return;
-    setBankBusy(true);
-    setDepositError(null);
-    try {
-      await fundWithBank({
-        source: {
-          assets: ["usd", "eur", "gbp", "mxn", "brl"],
-          defaultAsset: "usd",
-        },
-        destination: {
-          asset: "usdc",
-          chain: `eip155:${MONAD_MAINNET_CHAIN_ID}`,
-          address: walletAddress,
-        },
-        provider: bridgeProvider(),
-      });
-      void refresh();
-      speedRef.current?.trigger(demoMode ? 0.8 : undefined);
-    } catch (e) {
-      setDepositError(
-        e instanceof Error
-          ? e.message
-          : "Could not start bank deposit. Finish Bridge setup in Privy (Account funding) and ensure this chain is supported.",
-      );
-    } finally {
-      setBankBusy(false);
-    }
-  }
 
   async function copyAddress() {
     if (!walletAddress || !navigator.clipboard?.writeText) return;
@@ -187,6 +127,8 @@ function DashboardWithPrivy() {
     navigate("/");
   }
 
+  const displayEmail = getUserDisplayEmail(user);
+
   const primaryBalance =
     depositAsset === "MON"
       ? balanceMon !== null
@@ -202,44 +144,61 @@ function DashboardWithPrivy() {
 
   return (
     <div className="min-h-screen bg-neutral-100 text-neutral-900">
-      <OnrampModal
-        onrampUrl={onrampUrl}
-        onClose={() => setOnrampUrl(null)}
-        onContinue={() => {
-          void refresh();
-          speedRef.current?.trigger(demoMode ? 0.8 : undefined);
-        }}
-      />
-      <DemoFundModal
-        open={demoFundOpen}
-        onClose={() => setDemoFundOpen(false)}
-        onComplete={() => {
-          speedRef.current?.trigger(0.8);
-          void refresh();
-        }}
-        assetLabel={depositAsset === "MON" ? "MON" : "USDC"}
-      />
+      <DashboardActionModal
+        open={quickAction === "deposit"}
+        onClose={() => setQuickAction(null)}
+        title="Fund wallet"
+        subtitle="Monad testnet"
+      >
+        <DepositFundingBody
+          depositAsset={depositAsset}
+          setDepositAsset={setDepositAsset}
+          walletAddress={walletAddress}
+          balanceError={balanceError}
+          onCreateWallet={() => void createWallet()}
+          onMoonpayDemoComplete={() => void refresh()}
+        />
+      </DashboardActionModal>
+
+      <DashboardActionModal
+        open={quickAction === "send"}
+        onClose={() => setQuickAction(null)}
+        title="Send"
+        subtitle="Email, @handle, or 0x address"
+      >
+        <DashboardSocialSend
+          variant="modal"
+          walletAddress={walletAddress}
+          balanceMon={balanceMon}
+          onSent={refreshBalancesAndActivity}
+          onConfirmSend={() => speedRef.current?.trigger()}
+        />
+      </DashboardActionModal>
+
+      <DashboardActionModal
+        open={quickAction === "swap"}
+        onClose={() => setQuickAction(null)}
+        title="Swap"
+        subtitle="Kuru DEX"
+        size="lg"
+      >
+        <DashboardKuruPanel
+          variant="modal"
+          walletAddress={walletAddress as `0x${string}` | undefined}
+        />
+      </DashboardActionModal>
 
       <div className="flex min-h-screen">
         <DashboardSidebar active={nav} onNavigate={setNav} />
 
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-40 border-b border-neutral-200/90 bg-white/95 backdrop-blur-md">
-            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
-              <div className="flex min-w-0 items-center gap-2 lg:hidden">
+            <div className="flex w-full items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
+              <div className="flex min-w-0 shrink-0 items-center gap-2 lg:hidden">
                 <MonadLogo size={28} />
                 <span className="font-sans text-sm font-semibold">MonadSwift</span>
               </div>
-              <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:gap-3">
-                <label className="flex cursor-pointer items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900">
-                  <input
-                    type="checkbox"
-                    className="accent-amber-600"
-                    checked={demoMode}
-                    onChange={(e) => setDemoMode(e.target.checked)}
-                  />
-                  Demo mode
-                </label>
+              <div className="ml-auto flex flex-wrap items-center justify-end gap-2 sm:gap-3">
                 {balanceMon !== null ? (
                   <div className="hidden rounded-full bg-monad/10 px-3 py-1.5 text-xs font-semibold text-monad sm:inline-flex">
                     {Number.parseFloat(balanceMon).toLocaleString(undefined, {
@@ -282,13 +241,13 @@ function DashboardWithPrivy() {
                         </p>
                         <p className="mt-2 text-sm text-neutral-500">
                           Balance on{" "}
-                          <span className="font-medium text-neutral-700">{monadMainnet.name}</span>
+                          <span className="font-medium text-neutral-700">{monadAppChain.name}</span>
                         </p>
                       </div>
                       <div className="flex flex-col items-end gap-2">
                         <span className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700">
                           <span className="h-2 w-2 rounded-full bg-monad" aria-hidden />
-                          Monad
+                          {monadAppNetwork === "testnet" ? "Monad testnet" : "Monad mainnet"}
                         </span>
                         <div
                           className="inline-flex rounded-full border border-neutral-200 bg-white p-1 shadow-sm"
@@ -317,21 +276,18 @@ function DashboardWithPrivy() {
                   <div className="grid gap-3 p-4 sm:grid-cols-3 sm:p-6">
                     <button
                       type="button"
-                      onClick={handleMoonPayFund}
-                      disabled={!walletAddress}
-                      className="flex flex-col items-center gap-2 rounded-2xl border border-neutral-200 bg-neutral-50/80 px-4 py-5 text-center transition-colors hover:border-monad/30 hover:bg-monad/5 disabled:cursor-not-allowed disabled:opacity-50"
+                      onClick={() => setQuickAction("deposit")}
+                      className="flex flex-col items-center gap-2 rounded-2xl border border-neutral-200 bg-neutral-50/80 px-4 py-5 text-center transition-colors hover:border-monad/30 hover:bg-monad/5"
                     >
                       <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-xl font-light text-monad shadow-sm">
                         +
                       </span>
                       <span className="text-sm font-semibold text-neutral-900">Deposit</span>
-                      <span className="text-[11px] text-neutral-500">
-                        {demoMode ? "Demo onramp" : "MoonPay / card"}
-                      </span>
+                      <span className="text-[11px] text-neutral-500">Testnet faucet</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => setNav("send")}
+                      onClick={() => setQuickAction("send")}
                       className="flex flex-col items-center gap-2 rounded-2xl border border-neutral-200 bg-neutral-50/80 px-4 py-5 text-center transition-colors hover:border-monad/30 hover:bg-monad/5"
                     >
                       <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-lg shadow-sm">
@@ -342,14 +298,14 @@ function DashboardWithPrivy() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setNav("swap")}
+                      onClick={() => setQuickAction("swap")}
                       className="flex flex-col items-center gap-2 rounded-2xl border border-neutral-200 bg-neutral-50/80 px-4 py-5 text-center transition-colors hover:border-monad/30 hover:bg-monad/5"
                     >
                       <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-lg shadow-sm">
                         ⇄
                       </span>
                       <span className="text-sm font-semibold text-neutral-900">Swap</span>
-                      <span className="text-[11px] text-neutral-500">Kuru · MON / USDC</span>
+                      <span className="text-[11px] text-neutral-500">Kuru</span>
                     </button>
                   </div>
 
@@ -365,25 +321,24 @@ function DashboardWithPrivy() {
                   </div>
                 </section>
 
-                <MonadSpeedometer ref={speedRef} demoMode={demoMode} />
+                {walletAddress ? (
+                  <DashboardTxHistory
+                    rows={txHistory.rows}
+                    loading={txHistory.loading}
+                    error={txHistory.error}
+                    onRefresh={txHistory.refresh}
+                  />
+                ) : null}
 
-                <section className="rounded-2xl border border-neutral-200/90 bg-white p-5 shadow-sm sm:p-6">
-                  <h2 className="font-sans text-lg font-semibold text-neutral-950">
-                    Embedded wallet
-                  </h2>
-                  <p className="mt-1 text-sm text-neutral-600">
-                    Privy creates a non-custodial wallet — no seed phrase in the happy path. Network:{" "}
-                    <a
-                      href={MONAD_MAINNET_DOCS}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-medium text-monad underline-offset-2 hover:underline"
-                    >
-                      Monad mainnet
-                    </a>{" "}
-                    ({MONAD_MAINNET_CHAIN_ID}).
-                  </p>
-                  {!walletAddress ? (
+                <MonadSpeedometer ref={speedRef} />
+
+                {!walletAddress ? (
+                  <div className="rounded-2xl border border-monad/15 bg-white p-5 text-center shadow-sm sm:text-left">
+                    <p className="text-sm text-neutral-600">
+                      Create an embedded wallet on {monadAppChain.name} to see balances. Use{" "}
+                      <span className="font-medium text-neutral-800">Deposit</span> for testnet
+                      funding notes, or open it to create a wallet from there.
+                    </p>
                     <button
                       type="button"
                       onClick={() => void createWallet()}
@@ -391,69 +346,40 @@ function DashboardWithPrivy() {
                     >
                       Create embedded wallet
                     </button>
-                  ) : balanceError ? (
-                    <p className="mt-4 text-sm text-red-600">{balanceError}</p>
-                  ) : (
-                    <dl className="mt-4 grid gap-2 text-sm text-neutral-700 sm:grid-cols-[auto_1fr] sm:gap-x-6">
-                      <dt className="text-neutral-500">Address</dt>
-                      <dd className="break-all font-mono text-xs text-neutral-900">{walletAddress}</dd>
-                      <dt className="text-neutral-500">USDC</dt>
-                      <dd className="break-all font-mono text-xs">{MONAD_MAINNET_USDC}</dd>
-                    </dl>
-                  )}
+                  </div>
+                ) : null}
 
-                  {walletAddress ? (
-                    <div className="mt-6 space-y-4 border-t border-neutral-100 pt-6">
-                      <div>
-                        <p className="text-xs font-semibold text-neutral-800">MoonPay</p>
-                        <p className="mt-1 text-[11px] leading-snug text-neutral-500">
-                          {demoMode
-                            ? "Demo mode skips the MoonPay tab — toggle off to use a real publishable key and checkout."
-                            : "Opens MoonPay in a new tab. Configure currency/network codes to match your MoonPay dashboard."}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={handleMoonPayFund}
-                          className="mt-3 w-full rounded-full border border-monad/50 bg-white px-4 py-2.5 text-sm font-semibold text-monad shadow-sm hover:bg-monad/5 sm:w-auto"
-                        >
-                          {depositAsset === "MON" ? "Add MON (MoonPay)" : "Add USDC (MoonPay)"}
-                        </button>
-                      </div>
-                      {depositAsset === "USDC" ? (
-                        <div>
-                          <p className="text-xs font-semibold text-neutral-800">
-                            Bridge (bank transfer)
-                          </p>
-                          <button
-                            type="button"
-                            disabled={bankBusy}
-                            onClick={() => void handleBridgeBankDeposit()}
-                            className="mt-3 w-full rounded-full border border-neutral-300 bg-white px-4 py-2.5 text-sm font-semibold text-neutral-900 shadow-sm hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-                          >
-                            {bankBusy ? "Opening…" : "Deposit USDC via bank (Bridge)"}
-                          </button>
-                        </div>
-                      ) : null}
-                      {depositError ? (
-                        <p className="text-xs text-red-600" role="alert">
-                          {depositError}
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </section>
+                {walletAddress && balanceError ? (
+                  <div className="rounded-2xl border border-red-100 bg-red-50/90 px-4 py-3 text-sm text-red-800">
+                    <p>{balanceError}</p>
+                    <button
+                      type="button"
+                      onClick={refreshBalancesAndActivity}
+                      className="mt-2 text-sm font-semibold text-monad hover:underline"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                ) : null}
 
-                <DashboardTransactions />
+                <DashboardKuruActivity />
               </div>
             ) : null}
 
-            {nav === "swap" ? <DashboardKuruPanel /> : null}
+            {nav === "swap" ? (
+              <DashboardKuruPanel walletAddress={walletAddress as `0x${string}` | undefined} />
+            ) : null}
             {nav === "yield" ? <DashboardYieldPanel /> : null}
             {nav === "send" ? (
               <DashboardSocialSend
                 walletAddress={walletAddress}
-                onSimulatedSend={() => speedRef.current?.trigger(demoMode ? 0.8 : undefined)}
+                balanceMon={balanceMon}
+                onSent={refreshBalancesAndActivity}
+                onConfirmSend={() => speedRef.current?.trigger()}
               />
+            ) : null}
+            {nav === "settings" ? (
+              <DashboardProfileSettings email={displayEmail} walletAddress={walletAddress} />
             ) : null}
           </main>
         </div>
