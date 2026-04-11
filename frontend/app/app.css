@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+/* Britti Sans: add WOFF2 under /public/fonts and @font-face here when licensed. */
+@theme {
+  --font-sans: "Britti Sans", "Plus Jakarta Sans", ui-sans-serif, system-ui,
+    sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
+    "Noto Color Emoji";
+  --color-monad: #7b52ff;
+  --color-monad-hover: #6845e8;
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Hide scrollbars but keep overflow scroll for tall modal content (mobile keyboards, small viewports). */
+.modal-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.modal-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+html,
+body {
+  @apply bg-white text-neutral-900 antialiased;
+}

@@ -1,0 +1,47 @@
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs & package manager debug
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Dependencies
+node_modules/
+
+# Build & tooling caches
+dist/
+build/
+.vite/
+.react-router/
+.turbo/
+.cache/
+.parcel-cache/
+
+# Environment — never commit secrets (see frontend/.env.example)
+.env
+.env.local
+.env.*.local
+!.env.example
+!**/.env.example
+
+# TypeScript
+*.tsbuildinfo
+
+# Test / coverage
+coverage/
+.nyc_output/
+
+# IDE & editors
+.idea/
+*.suo
+*.user
+*.swp
+*.swo
+
+# Archives / misc
+*.tgz
